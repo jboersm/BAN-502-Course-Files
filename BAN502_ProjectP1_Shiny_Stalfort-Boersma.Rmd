@@ -1,0 +1,212 @@
+---
+title: "BAN502_ProjectP1_Shiny_Stalfort-Boersma"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    runtime: shiny
+
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+```
+
+
+```{r, include=FALSE}
+options(tidyverse.quiet = TRUE)
+library(tidyverse)
+library(tidymodels)
+library(Hmisc)
+library(caret)
+library(gridExtra)
+library(vip)
+library(ranger)
+library(mice) #package for imputation
+library(VIM) #visualizing missingness
+library(rpart) #for classification trees
+library(rpart.plot) #for plotting trees
+library(RColorBrewer) #better visualization of classification trees
+library(rattle) #better visualization of classification trees
+library(skimr)
+library(wesanderson)
+```
+
+
+```{r}
+shark_student_SB <- read.csv("shark_student.csv")
+##str(shark_student_SB)
+##summary(shark_student_SB)
+
+## Initial glance looks like no missing values
+```
+
+
+
+```{r}
+
+
+## Starting with binary yes/no
+shark_clean <- shark_student_SB %>%
+    mutate_at(vars(Company:Deal_No, Male1:CompanyState, BarbaraCorcoran:Guest), funs(as_factor)) %>%
+  mutate_at(.vars = vars(ReceiveOffer:Deal_No, Male1:MixedGenderPresenters, BarbaraCorcoran:Guest),
+            .funs = forcats::fct_recode,
+            "Yes" = "1",
+            "No" = "0"
+)%>%
+  mutate_at(vars(Eth1:Eth5), funs(as_factor)) %>%
+  mutate(Eth1 = fct_recode(Eth1, "African American" = "1", 
+            "White" = "2",
+            "Asian" = "3",
+            "Latino" = "4",
+            "No presenter 1" = "0"
+            ))%>%
+  mutate(Eth2 = fct_recode(Eth2, "African American" = "1", 
+            "White" = "2",
+            "Asian" = "3",
+            "Latino" = "4",
+            "No presenter 2" = "0"
+            ))%>%
+   mutate(Eth3 = fct_recode(Eth3, "African American" = "1", 
+            "White" = "2",
+            "Asian" = "3",
+            "Latino" = "4",
+            "No presenter 3" = "0"
+            ))%>%
+    mutate(Eth4 = fct_recode(Eth4, "African American" = "1", 
+            "White" = "2",
+            "Asian" = "3",
+            "Latino" = "4",
+            "No presenter 4" = "0"
+            ))%>%
+     mutate(Eth5 = fct_recode(Eth5, "African American" = "1", 
+            "White" = "2",
+            "Asian" = "3",
+            "Latino" = "4",
+            "No presenter 5" = "0"
+            ))
+
+            
+##skim(shark_clean)
+
+```
+
+```{r}
+set.seed(12345)
+shark_split <- initial_split(shark_clean, prop = 0.70, strata = Deal_Yes)
+train <- training(shark_split)
+test <- testing(shark_split)
+```
+
+Column {data-width=550}
+-----------------------------------------------------------------------
+### Pitch Categories as Predictors of Getting to Yes for Better or Worse
+
+```{r}
+t3 <- ggplot(train, aes(x = Business.Services, fill = Deal_Yes)) + geom_bar(position = "fill")+
+  scale_fill_manual(values = wes_palette(n=2, name = "Cavalcanti1"))+
+  theme_minimal()+
+  scale_y_continuous(labels = percent)+
+  labs(subtitle = "Most unpopular",
+        x = "Business Services",
+        y = "")+
+  theme(legend.position = "none")
+
+t8 <- ggplot(train, aes(x = Fashion...Beauty, fill = Deal_Yes)) + geom_bar(position = "fill")+
+  scale_fill_manual(values = wes_palette(n=2, name = "Cavalcanti1"))+
+  theme_minimal()+
+  scale_y_continuous(labels = percent)+
+  labs(subtitle = "Saturated?",
+        x = "Fashion & Beauty",
+       y = "")+
+   theme(legend.position = "none")
+
+t4 <- ggplot(train, aes(x = Lifestyle...Home, fill = Deal_Yes)) + geom_bar(position = "fill")+
+  scale_fill_manual(values = wes_palette(n=2, name = "Cavalcanti1"))+
+  theme_minimal()+
+  scale_y_continuous(labels = percent)+
+  labs(fill = "Deal?",
+       x = "Lifestyle & Home",
+       y = "")+
+   theme(legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(.25, 'cm'))
+ 
+        
+  
+
+t6 <- ggplot(train, aes(x = Children...Education, fill = Deal_Yes)) + geom_bar(position = "fill")+
+  scale_fill_manual(values = wes_palette(n=2, name = "Cavalcanti1"))+
+  theme_minimal()+
+  scale_y_continuous(labels = percent)+
+  labs(fill = "Deal?",
+      x = "Children & Education",
+       y = "")+
+  theme(legend.position = "bottom",
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(.25, 'cm'))
+
+grid.arrange(t3,t8,t4,t6)
+```
+
+Column {data-width=450}
+-----------------------------------------------------------------------
+
+### Mixed Gender and Ethnicity as Possible Predictors 
+
+```{r}
+g3 <- ggplot(train, aes(x = MixedGenderPresenters, fill = Deal_Yes)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = wes_palette(n=2, name = "Moonrise2"))+
+  theme_minimal()+
+  scale_y_continuous(labels = percent)+
+  labs(subtitle = "Gender Diversity a Plus",
+        fill = "Deal?",
+        x = "Mixed Gender",
+        y = "")+
+  theme(legend.position = "left",
+        legend.title = element_text(size = 8),
+        legend.key.size = unit(.25, 'cm'))
+
+Filtered_Train <- subset(train, !Eth1 == "No presenter 1")
+
+e1 <- ggplot(Filtered_Train, aes(x = Eth1, fill = Deal_Yes)) + 
+  geom_bar(position = "fill")+ 
+  scale_fill_manual(values = wes_palette(n=2, name = "Moonrise2"))+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle=45, size = 10, hjust=1))+
+  theme(legend.text = element_text(size = 10)) +
+  scale_y_continuous(labels = percent)+
+  labs(title = "First Speaker Ethnicity",
+       subtitle = "a mixed bag",
+        x = "",
+       y = "")+
+  theme(legend.position = "none")
+  
+
+grid.arrange(g3,e1, ncol=2)
+
+```
+
+
+
+### Equity Requested
+
+```{r}
+Equity_RequestedV2 <- ggplot(train, aes(x=Deal_Yes, y = EquityRequested)) + 
+  geom_violin(aes(color = Deal_Yes), trim = FALSE) +
+  geom_jitter(shape = 3, width = 0.15, color = "grey")+
+  stat_summary(fun.data = "mean_sdl", fun.args = list(mult=1),
+               geom = "pointrange", 
+               color = "black")+
+  labs(subtitle = "Getting to Yes by Lower Equity Request",
+        x = "Deal Yes",
+       y = "Equity Requested")+
+  theme_gray()+
+  theme(legend.position = "none")
+  
+  
+Equity_RequestedV2 + scale_y_continuous(labels = percent)
+
+```
+
